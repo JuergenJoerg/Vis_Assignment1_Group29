@@ -1,0 +1,111 @@
+/*
+* Vis 1 Task 1 Framework
+* Copyright (C) TU Wien
+*   Institute of Visual Computing and Human-Centered Technology
+*   Research Unit of Computer Graphics
+* Maintenance:
+*   2021: Manuela Waldner
+* All rights reserved.
+*
+* Redistribution and use in source and binary forms, with or without
+* modification, are not permitted.
+* 
+* Sets one of two colors for a fragment, depending on colorIdx. 
+*/
+#ifndef GL_ES
+#version 330 es
+#endif
+
+precision highp int;
+precision highp float;
+precision highp sampler3D;
+
+uniform vec3 boxMin;
+uniform vec3 boxMax;
+uniform sampler3D volume;
+
+// interpolated position from vertex shader (world-space fragment pos)
+in vec3 vPositionWS;
+
+out vec4 fragColor;
+
+struct Ray {
+    vec3 origin;
+    vec3 direction;
+    vec3 invDirection;
+};
+
+struct Box {
+    vec3 min;
+    vec3 max;
+};
+
+struct BoxIntersection {
+    bool hit;
+    vec3 entryPoint;
+    vec3 exitPoint;
+};
+
+Ray initRay(vec3 fragPos) {
+    Ray ray;
+    ray.origin = cameraPosition;
+    ray.direction = normalize(fragPos - cameraPosition);
+    ray.invDirection = 1.0 / ray.direction;
+    return ray;
+}
+
+BoxIntersection intersectBox(Box box, Ray ray) {
+    BoxIntersection result;
+
+    vec3 tBoxMax = (box.max - ray.origin) * ray.invDirection;
+    vec3 tBoxMin = (box.min - ray.origin) * ray.invDirection;
+
+    vec3 tMin = min(tBoxMax, tBoxMin);
+    vec2 t = max(tMin.xx, tMin.yz);
+    float t0 = max(0.0, max(t.x, t.y));
+
+    vec3 tMax = max(tBoxMax, tBoxMin);
+    t = min(tMax.xx, tMax.yz);
+    float t1 = min(t.x, t.y);
+
+    result.hit = (t1 > t0);
+    result.entryPoint = (cameraPosition + ray.direction * t0 - boxMin) / (boxMax - boxMin);
+    result.exitPoint  = (cameraPosition + ray.direction * t1 - boxMin) / (boxMax - boxMin);
+
+    return result;
+}
+
+vec4 calcFragColor(vec3 rayOrigin, vec3 samplingRayVec) {
+    float stepSize = 0.0025;
+    float rayLength = length(samplingRayVec);
+
+    vec3 currentPosition = rayOrigin;
+    float maxIntensity = 0.0;
+    float coveredLength = 0.0;
+    while (coveredLength < rayLength) {
+
+        // Look up the intensity at current position
+        float intensity = textureLod(volume, currentPosition, 0.0).r;
+        if (intensity > maxIntensity) {
+            maxIntensity = intensity;
+        }
+
+        // Calculate next position along the ray
+        currentPosition += stepSize * normalize(samplingRayVec);
+        coveredLength += stepSize;
+    }
+
+    return vec4(vec3(maxIntensity), 1.0);
+}
+
+void main() {
+    Ray ray = initRay(vPositionWS);
+    Box box = Box(boxMin, boxMax);
+
+    BoxIntersection result = intersectBox(box, ray);
+
+    vec3 samplingRay = result.exitPoint - result.entryPoint;
+
+    fragColor = calcFragColor(result.entryPoint, samplingRay);
+}
+

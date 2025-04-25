@@ -14,6 +14,9 @@
 #version 330 es
 #endif
 
+out vec3 vPositionWS;
+
 void main() {
+    vPositionWS = (modelMatrix * vec4(position, 1.0)).xyz;
     gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1);
 }
