@@ -41,6 +41,8 @@ function init() {
 
     // init rayCastingShader
     rayCastingShader = new RayCastingShader();
+
+    initHistogram();
 }
 
 /**
@@ -53,6 +55,8 @@ function readFile(){
 
         let data = new Uint16Array(reader.result);
         volume = new Volume(data);
+
+        updateHistogram(Array.from(volume.voxels));
 
         resetVis();
     };
