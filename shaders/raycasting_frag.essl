@@ -24,9 +24,19 @@ uniform vec3 boxMin;
 uniform vec3 boxMax;
 uniform sampler3D volume;
 
-// interpolated position from vertex shader (world-space fragment pos)
-in vec3 vPositionWS;
+//TODO: make uniforms
+uniform float planeRotX;
+uniform float planeRotY;
+uniform vec3 planePos;    // xyz translation
+uniform bool renderAbovePlane;
 
+vec3 planeNormal;
+vec3 planePoint;
+
+
+
+
+in vec3 vPositionWS;
 out vec4 fragColor;
 
 struct Ray {
@@ -42,8 +52,8 @@ struct Box {
 
 struct BoxIntersection {
     bool hit;
-    vec3 entryPoint;
-    vec3 exitPoint;
+    float tEntry;
+    float tExit;
 };
 
 Ray initRay(vec3 fragPos) {
@@ -55,57 +65,130 @@ Ray initRay(vec3 fragPos) {
 }
 
 BoxIntersection intersectBox(Box box, Ray ray) {
+    vec3 t1 = (box.min - ray.origin) * ray.invDirection;
+    vec3 t2 = (box.max - ray.origin) * ray.invDirection;
+    vec3 tMin = min(t1, t2);
+    vec3 tMax = max(t1, t2);
+    float tEntry = max(max(tMin.x, tMin.y), tMin.z);
+    float tExit  = min(min(tMax.x, tMax.y), tMax.z);
+
     BoxIntersection result;
-
-    vec3 tBoxMax = (box.max - ray.origin) * ray.invDirection;
-    vec3 tBoxMin = (box.min - ray.origin) * ray.invDirection;
-
-    vec3 tMin = min(tBoxMax, tBoxMin);
-    vec2 t = max(tMin.xx, tMin.yz);
-    float t0 = max(0.0, max(t.x, t.y));
-
-    vec3 tMax = max(tBoxMax, tBoxMin);
-    t = min(tMax.xx, tMax.yz);
-    float t1 = min(t.x, t.y);
-
-    result.hit = (t1 > t0);
-    result.entryPoint = (cameraPosition + ray.direction * t0 - boxMin) / (boxMax - boxMin);
-    result.exitPoint  = (cameraPosition + ray.direction * t1 - boxMin) / (boxMax - boxMin);
-
+    result.hit = (tExit > max(tEntry, 0.0));
+    result.tEntry = max(tEntry, 0.0);
+    result.tExit = tExit;
     return result;
 }
 
-vec4 calcFragColor(vec3 rayOrigin, vec3 samplingRayVec) {
+// Ray-plane intersection
+bool intersectPlane(vec3 origin, vec3 dir, out float t) {
+    float denom = dot(planeNormal, dir);
+    if (abs(denom) < 1e-6) return false;
+    t = dot(planePoint - origin, planeNormal) / denom;
+    return true;
+}
+
+float signedDistanceToPlane(vec3 point) {
+    return dot(planeNormal, point - planePoint);
+}
+
+vec4 calcFragColor(vec3 start, vec3 end) {
     float stepSize = 0.0025;
-    float rayLength = length(samplingRayVec);
+    vec3 dir = normalize(end - start);
+    float rayLength = length(end - start);
 
-    vec3 currentPosition = rayOrigin;
+    vec3 pos = start;
+    float covered = 0.0;
     float maxIntensity = 0.0;
-    float coveredLength = 0.0;
-    while (coveredLength < rayLength) {
 
-        // Look up the intensity at current position
-        float intensity = textureLod(volume, currentPosition, 0.0).r;
-        if (intensity > maxIntensity) {
-            maxIntensity = intensity;
-        }
-
-        // Calculate next position along the ray
-        currentPosition += stepSize * normalize(samplingRayVec);
-        coveredLength += stepSize;
+    while (covered < rayLength) {
+        float intensity = texture(volume, pos).r;
+        maxIntensity = max(maxIntensity, intensity);
+        pos += dir * stepSize;
+        covered += stepSize;
     }
 
     return vec4(vec3(maxIntensity), 1.0);
 }
 
-void main() {
-    Ray ray = initRay(vPositionWS);
-    Box box = Box(boxMin, boxMax);
+vec3 computePlaneNormal(float rotX, float rotY) {
+    // Start with base normal facing +Z
+    vec3 n = vec3(0.0, 0.0, 1.0);
 
-    BoxIntersection result = intersectBox(box, ray);
+    // Rotation around X (pitch)
+    float cosX = cos(rotX);
+    float sinX = sin(rotX);
+    n = vec3(n.x, n.y * cosX - n.z * sinX, n.y * sinX + n.z * cosX);
 
-    vec3 samplingRay = result.exitPoint - result.entryPoint;
+    // Rotation around Y (yaw)
+    float cosY = cos(rotY);
+    float sinY = sin(rotY);
+    n = vec3(n.x * cosY + n.z * sinY, n.y, -n.x * sinY + n.z * cosY);
 
-    fragColor = calcFragColor(result.entryPoint, samplingRay);
+    return normalize(n);
 }
 
+
+void main() {
+    planeNormal = computePlaneNormal(planeRotX, planeRotY);
+    planePoint = planePos;
+
+    Ray ray = initRay(vPositionWS);
+    Box box = Box(boxMin, boxMax);
+    BoxIntersection hit = intersectBox(box, ray);
+
+    if (!hit.hit) {
+        discard;
+    }
+
+    float t0 = hit.tEntry;
+    float t1 = hit.tExit;
+
+    vec3 entryWS = ray.origin + ray.direction * t0;
+    vec3 exitWS  = ray.origin + ray.direction * t1;
+
+    float dEntry = signedDistanceToPlane(entryWS);
+    float dExit  = signedDistanceToPlane(exitWS);
+
+    // Discard if plane cuts off
+    if (!renderAbovePlane) {
+        if (dEntry < 0.0 && dExit < 0.0) {
+            discard;
+        }
+    } else {
+        if (dEntry > 0.0 && dExit > 0.0) {
+            discard;
+        }
+    }
+
+    //  Clip part of the ray above/below the plane
+    float tPlane;
+    if (intersectPlane(ray.origin, ray.direction, tPlane)) {
+        vec3 hitPoint = ray.origin + ray.direction * tPlane;
+
+        if (!renderAbovePlane) {
+            if (dEntry < 0.0 && tPlane >= t0 && tPlane <= t1) {
+                entryWS = hitPoint;
+            }
+            if (dExit < 0.0 && tPlane >= t0 && tPlane <= t1) {
+                exitWS = hitPoint;
+            }
+        } else {
+            if (dEntry > 0.0 && tPlane >= t0 && tPlane <= t1) {
+                entryWS = hitPoint;
+            }
+            if (dExit > 0.0 && tPlane >= t0 && tPlane <= t1) {
+                exitWS = hitPoint;
+            }
+        }
+    }
+
+
+    if (length(exitWS - entryWS) < 1e-5) {
+        discard;
+    }
+
+    vec3 texEntry = (entryWS - boxMin) / (boxMax - boxMin);
+    vec3 texExit  = (exitWS - boxMin) / (boxMax - boxMin);
+
+    fragColor = calcFragColor(texEntry, texExit);
+}

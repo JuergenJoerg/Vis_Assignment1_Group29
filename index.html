@@ -18,6 +18,7 @@
     <script src="js/rayCastingShader.js"></script>
     <script src="js/volume.js"></script>
     <script src="js/histogram.js"></script>
+    <script src="js/cuttingPlane.js"></script>
     <script src="js/camera.js"></script>
     <script src="js/vis1.js"></script>
 
@@ -27,7 +28,7 @@
 <body onload="init()">
 
 <h1>Vis1 Exercise</h1>
-<h2>Your names here</h2>
+<h2>Daniel Kisling, </h2>
 
 <!-- data selector -->
 <p>Select your data here: <input id="upload" type="file"></p>
@@ -38,7 +39,31 @@
     <div id="viewContainer"></div>
 
     <!-- container for interactive transfer function -->
-    <div id="tfContainer"></div>
+    <div id="tfContainer">
+        <h3>Cutting Plane</h3>
+        <p class="select-label">Render Side:</p>
+        <select name="cuttingPlaneRenderSideSelect" id="cpRenderSideSelect">
+            <option selected="selected" value="0">Below</option>
+            <option value="1">Above</option>
+        </select>
+        <div class="slider-area">
+            <div class="slider-group">
+                <p class="slider-label">X - Translation:</p>
+                <input type="range" min="-150" max="150" value="0" class="slider" id="xTranSlider">
+                <p class="slider-label">Y - Translation:</p>
+                <input type="range" min="-150" max="150" value="0" class="slider" id="yTranSlider">
+                <p class="slider-label">Z - Translation:</p>
+                <input type="range" min="-150" max="150" value="0" class="slider" id="zTranSlider">
+            </div>
+            <div class="slider-group">
+                <p class="slider-label">X - Rotation:</p>
+                <input type="range" min="0" max="180" value="0" class="slider" id="xRotSlider">
+                <p class="slider-label">Y - Rotation:</p>
+                <input type="range" min="0" max="180" value="0" class="slider" id="yRotSlider">
+            </div>
+        </div>
+
+    </div>
 
 </div>
 

@@ -20,6 +20,8 @@ let container = null;
 let volume = null;
 let fileInput = null;
 let rayCastingShader = null;
+let histogram = null;
+let cuttingPlane = null;
 
 /**
  * Load all data and initialize UI here.
@@ -42,7 +44,9 @@ function init() {
     // init rayCastingShader
     rayCastingShader = new RayCastingShader();
 
-    initHistogram();
+
+    cuttingPlane = new CuttingPlane();
+    histogram = new Histogram("#tfContainer");
 }
 
 /**
@@ -56,7 +60,7 @@ function readFile(){
         let data = new Uint16Array(reader.result);
         volume = new Volume(data);
 
-        updateHistogram(Array.from(volume.voxels));
+        histogram.update(Array.from(volume.voxels));
 
         resetVis();
     };
@@ -76,6 +80,8 @@ async function resetVis(){
     const rayCastingMaterial = rayCastingShader.material;
     await rayCastingShader.load();
 
+    cuttingPlane.setShader(rayCastingShader);
+
     const texture = new THREE.Data3DTexture(volume.voxels, volume.width, volume.height, volume.depth);
     texture.format = THREE.RedFormat;
     texture.type = THREE.FloatType;
@@ -87,6 +93,12 @@ async function resetVis(){
     rayCastingShader.setUniform("boxMin", [-volume.width/2, -volume.height/2, -volume.depth/2], "v3");
     rayCastingShader.setUniform("boxMax", [volume.width/2, volume.height/2, volume.depth/2], "v3");
     rayCastingShader.setUniform("volume", texture, "t3D");
+    rayCastingShader.setUniform("planeRotX", 0.0);
+    rayCastingShader.setUniform("planeRotY", 0.0);
+    rayCastingShader.setUniform("planePos", new THREE.Vector3(0.0, 0.0, 0.0));
+    rayCastingShader.setUniform("renderAbovePlane", false);
+
+    cuttingPlane.update();
 
     const boxMesh = new THREE.Mesh(box, rayCastingMaterial);
     scene.add(boxMesh);
