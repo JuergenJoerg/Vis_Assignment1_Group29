@@ -47,6 +47,18 @@ function init() {
 
     cuttingPlane = new CuttingPlane();
     histogram = new Histogram("#tfContainer");
+
+    const isovalueSlider = document.getElementById("isovalueSlider");
+    const isovalueValue = document.getElementById("isovalueValue");
+    
+    isovalueSlider.addEventListener('input', function() {
+        const value = parseFloat(this.value);
+        isovalueValue.textContent = value.toFixed(2);
+        if (rayCastingShader) {
+            rayCastingShader.setUniform("isovalue", value);
+            paint();
+        }
+    });
 }
 
 /**
@@ -97,6 +109,8 @@ async function resetVis(){
     rayCastingShader.setUniform("planeRotY", 0.0);
     rayCastingShader.setUniform("planePos", new THREE.Vector3(0.0, 0.0, 0.0));
     rayCastingShader.setUniform("renderAbovePlane", false);
+
+    rayCastingShader.setUniform("isovalue", 0.3);
 
     cuttingPlane.update();
 
