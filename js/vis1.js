@@ -50,12 +50,22 @@ function init() {
 
     const isovalueSlider = document.getElementById("isovalueSlider");
     const isovalueValue = document.getElementById("isovalueValue");
+    const useIsosurfaceCheckbox = document.getElementById("useIsosurfaceCheckbox");
+    const isosurfaceOptions = document.getElementById("isosurfaceOptions");
     
     isovalueSlider.addEventListener('input', function() {
         const value = parseFloat(this.value);
         isovalueValue.textContent = value.toFixed(2);
         if (rayCastingShader) {
             rayCastingShader.setUniform("isovalue", value);
+            paint();
+        }
+    });
+
+    useIsosurfaceCheckbox.addEventListener('change', function() {
+        if (rayCastingShader) {
+            rayCastingShader.setUniform("useIsosurface", this.checked);
+            isosurfaceOptions.style.display = this.checked ? "block" : "none";
             paint();
         }
     });
@@ -111,6 +121,7 @@ async function resetVis(){
     rayCastingShader.setUniform("renderAbovePlane", false);
 
     rayCastingShader.setUniform("isovalue", 0.3);
+    rayCastingShader.setUniform("useIsosurface", false);
 
     cuttingPlane.update();
 
