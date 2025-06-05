@@ -30,11 +30,13 @@ uniform float planeRotY;
 uniform vec3 planePos;    // xyz translation
 uniform bool renderAbovePlane;
 
+uniform float isovalue;
+uniform bool useIsosurface;
+uniform vec3 isosurfaceColor;
+uniform float isosurfaceTransparency;
+
 vec3 planeNormal;
 vec3 planePoint;
-
-
-
 
 in vec3 vPositionWS;
 out vec4 fragColor;
@@ -91,23 +93,109 @@ float signedDistanceToPlane(vec3 point) {
     return dot(planeNormal, point - planePoint);
 }
 
+// Calculate gradient at a given position using central differences
+vec3 calculateGradient(vec3 pos) {
+    float epsilon = 0.005;
+    
+    vec3 clampedPos = clamp(pos, vec3(epsilon), vec3(1.0 - epsilon));
+    
+    vec3 gradient;
+    
+    if (clampedPos.x + epsilon <= 1.0 && clampedPos.x - epsilon >= 0.0) {
+        gradient.x = 0.5 * (texture(volume, clampedPos - vec3(epsilon, 0.0, 0.0)).r - 
+                           texture(volume, clampedPos + vec3(epsilon, 0.0, 0.0)).r);
+    } else {
+        float step = clampedPos.x + epsilon > 1.0 ? -epsilon : epsilon;
+        gradient.x = (texture(volume, clampedPos).r - 
+                     texture(volume, clampedPos + vec3(step, 0.0, 0.0)).r) / step;
+    }
+    
+    if (clampedPos.y + epsilon <= 1.0 && clampedPos.y - epsilon >= 0.0) {
+        gradient.y = 0.5 * (texture(volume, clampedPos - vec3(0.0, epsilon, 0.0)).r - 
+                           texture(volume, clampedPos + vec3(0.0, epsilon, 0.0)).r);
+    } else {
+        float step = clampedPos.y + epsilon > 1.0 ? -epsilon : epsilon;
+        gradient.y = (texture(volume, clampedPos).r - 
+                     texture(volume, clampedPos + vec3(0.0, step, 0.0)).r) / step;
+    }
+    
+    if (clampedPos.z + epsilon <= 1.0 && clampedPos.z - epsilon >= 0.0) {
+        gradient.z = 0.5 * (texture(volume, clampedPos - vec3(0.0, 0.0, epsilon)).r - 
+                           texture(volume, clampedPos + vec3(0.0, 0.0, epsilon)).r);
+    } else {
+        float step = clampedPos.z + epsilon > 1.0 ? -epsilon : epsilon;
+        gradient.z = (texture(volume, clampedPos).r - 
+                     texture(volume, clampedPos + vec3(0.0, 0.0, step)).r) / step;
+    }
+    
+    return length(gradient) > 0.001 ? normalize(gradient) : vec3(0.0, 0.0, 1.0);
+}
+
+vec3 calculatePhongShading(vec3 normal, vec3 position, vec3 viewDir) {
+    vec3 lightDirection = vec3(-1.0, 1.0, 1.0);
+    vec3 lightColor = vec3(1.0, 1.0, 1.0);
+    vec3 ambientColor = vec3(0.2, 0.2, 0.2);
+    vec3 diffuseColor = isosurfaceColor;
+    vec3 specularColor = vec3(1.0, 1.0, 1.0);
+    float shininess = 32.0;
+    
+    vec3 N = normalize(normal);
+    vec3 L = normalize(-lightDirection);
+    vec3 V = normalize(viewDir);
+    
+    vec3 ambient = ambientColor;
+    
+    float lambertian = max(dot(N, L), 0.0);
+    vec3 diffuse = lambertian * diffuseColor * lightColor;
+    
+    vec3 specular = vec3(0.0);
+    if (lambertian > 0.0) {
+        vec3 R = reflect(-L, N);
+        float specAngle = max(dot(R, V), 0.0);
+        specular = pow(specAngle, shininess) * specularColor * lightColor;
+    }
+    
+    return ambient + diffuse + specular;
+}
+
 vec4 calcFragColor(vec3 start, vec3 end) {
     float stepSize = 0.0025;
-    vec3 dir = normalize(end - start);
+    vec3 rayDir = normalize(end - start);
     float rayLength = length(end - start);
-
+    
     vec3 pos = start;
-    float covered = 0.0;
-    float maxIntensity = 0.0;
+    float distance = 0.0;
+    
+    if (useIsosurface) {
+        while (distance < rayLength) {
+            float intensity = texture(volume, pos).r;
+            
+            if (intensity >= isovalue) {
+                vec3 hitNormal = calculateGradient(pos);
+                vec3 worldPos = pos * (boxMax - boxMin) + boxMin;
+                vec3 viewDir = normalize(cameraPosition - worldPos);
+                
+                vec3 color = calculatePhongShading(hitNormal, worldPos, viewDir);
+                return vec4(color, 1.0 - isosurfaceTransparency);
+            }
+            
+            pos += rayDir * stepSize;
+            distance += stepSize;
+        }
+        
+        discard;
+    } else {
+        float maxIntensity = 0.0;
 
-    while (covered < rayLength) {
-        float intensity = texture(volume, pos).r;
-        maxIntensity = max(maxIntensity, intensity);
-        pos += dir * stepSize;
-        covered += stepSize;
+        while (distance < rayLength) {
+            float intensity = texture(volume, pos).r;
+            maxIntensity = max(maxIntensity, intensity);
+            pos += rayDir * stepSize;
+            distance += stepSize;
+        }
+
+        return vec4(vec3(maxIntensity), 1.0);
     }
-
-    return vec4(vec3(maxIntensity), 1.0);
 }
 
 vec3 computePlaneNormal(float rotX, float rotY) {
@@ -126,7 +214,6 @@ vec3 computePlaneNormal(float rotX, float rotY) {
 
     return normalize(n);
 }
-
 
 void main() {
     planeNormal = computePlaneNormal(planeRotX, planeRotY);
@@ -181,7 +268,6 @@ void main() {
             }
         }
     }
-
 
     if (length(exitWS - entryWS) < 1e-5) {
         discard;

@@ -35,6 +35,9 @@ function init() {
     // WebGL renderer
     renderer = new THREE.WebGLRenderer();
     renderer.setSize( canvasWidth, canvasHeight );
+    renderer.setClearColor(0x000000, 0);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.sortObjects = true;
     container.appendChild( renderer.domElement );
 
     // read and parse volume file
@@ -47,6 +50,51 @@ function init() {
 
     cuttingPlane = new CuttingPlane();
     histogram = new Histogram("#tfContainer");
+
+    const isovalueSlider = document.getElementById("isovalueSlider");
+    const isovalueValue = document.getElementById("isovalueValue");
+    const useIsosurfaceCheckbox = document.getElementById("useIsosurfaceCheckbox");
+    const isosurfaceOptions = document.getElementById("isosurfaceOptions");
+    const isosurfaceColorPicker = document.getElementById("isosurfaceColorPicker");
+    const isosurfaceTransparencySlider = document.getElementById("isosurfaceTransparencySlider");
+    const isosurfaceTransparencyValue = document.getElementById("isosurfaceTransparencyValue");
+    
+    isovalueSlider.addEventListener('input', function() {
+        const value = parseFloat(this.value);
+        isovalueValue.textContent = value.toFixed(2);
+        if (rayCastingShader) {
+            rayCastingShader.setUniform("isovalue", value);
+            paint();
+        }
+    });
+
+    isosurfaceColorPicker.addEventListener('input', function() {
+        if (rayCastingShader) {
+            const color = this.value;
+            const r = parseInt(color.substr(1,2), 16) / 255;
+            const g = parseInt(color.substr(3,2), 16) / 255;
+            const b = parseInt(color.substr(5,2), 16) / 255;
+            rayCastingShader.setUniform("isosurfaceColor", [r, g, b], "v3");
+            paint();
+        }
+    });
+
+    isosurfaceTransparencySlider.addEventListener('input', function() {
+        const value = parseFloat(this.value);
+        isosurfaceTransparencyValue.textContent = value.toFixed(2);
+        if (rayCastingShader) {
+            rayCastingShader.setUniform("isosurfaceTransparency", value);
+            paint();
+        }
+    });
+
+    useIsosurfaceCheckbox.addEventListener('change', function() {
+        if (rayCastingShader) {
+            rayCastingShader.setUniform("useIsosurface", this.checked);
+            isosurfaceOptions.style.display = this.checked ? "block" : "none";
+            paint();
+        }
+    });
 }
 
 /**
@@ -78,6 +126,8 @@ async function resetVis(){
     const box = new THREE.BoxGeometry(volume.width, volume.height, volume.depth);
 
     const rayCastingMaterial = rayCastingShader.material;
+    rayCastingMaterial.transparent = true;
+    rayCastingMaterial.blending = THREE.NormalBlending;
     await rayCastingShader.load();
 
     cuttingPlane.setShader(rayCastingShader);
@@ -97,6 +147,11 @@ async function resetVis(){
     rayCastingShader.setUniform("planeRotY", 0.0);
     rayCastingShader.setUniform("planePos", new THREE.Vector3(0.0, 0.0, 0.0));
     rayCastingShader.setUniform("renderAbovePlane", false);
+
+    rayCastingShader.setUniform("isovalue", 0.3);
+    rayCastingShader.setUniform("useIsosurface", false);
+    rayCastingShader.setUniform("isosurfaceColor", [0.8, 0.6, 0.4], "v3");
+    rayCastingShader.setUniform("isosurfaceTransparency", 0.0);
 
     cuttingPlane.update();
 
