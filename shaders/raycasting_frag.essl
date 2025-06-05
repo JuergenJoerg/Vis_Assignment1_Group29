@@ -24,7 +24,6 @@ uniform vec3 boxMin;
 uniform vec3 boxMax;
 uniform sampler3D volume;
 
-//TODO: make uniforms
 uniform float planeRotX;
 uniform float planeRotY;
 uniform vec3 planePos;    // xyz translation
@@ -90,6 +89,9 @@ bool intersectPlane(vec3 origin, vec3 dir, out float t) {
 }
 
 float signedDistanceToPlane(vec3 point) {
+    // Calculate the distance between vec3 point and the plane. (Along the plane normal)
+    // Positive -> the point is in front of the plane (in the direction of the normal)
+    // Negative -> the point is behind the plane (opposite direction of the normal).
     return dot(planeNormal, point - planePoint);
 }
 
@@ -199,7 +201,6 @@ vec4 calcFragColor(vec3 start, vec3 end) {
 }
 
 vec3 computePlaneNormal(float rotX, float rotY) {
-    // Start with base normal facing +Z
     vec3 n = vec3(0.0, 0.0, 1.0);
 
     // Rotation around X (pitch)
